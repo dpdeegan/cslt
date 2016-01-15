@@ -1,55 +1,82 @@
 '''
-plan area update script
+script by dan deegan (intern), January 2016.
+this script updated the Flood Zone fields in the parcel layer from the FEMA Flood Zone layer
+the parcel layer has multiple fields that are values of a single field in the flood zone layer
+the fieldmap solves this problem. note that some part of the script call for the key, and some
+parts use the dict[key] value.
 '''
+print "-" * 15
+print "starting..."
 
 import arcpy, time
 tic = time.clock()
 arcpy.env.overwriteOutput = True
 
-#input FCs:
+#input FC's
+floodZoneFC = r'J:\GIS files\GIS_DATA\Flood Zones\2015\S_FLD_HAZ_AR.shp'
 parcels = r'J:\GIS files\CSLT.gdb\parcelTEST\Parcels_Aug2015_backup'
-planAreaFC = r'J:\GIS files\CSLT.gdb\PlanArea\CSLT_Plan_Areas_2014'
 
-#dictionary:
-planDict = {
-    "PAS_NAME" : "Plan_Area",
-    "PAS" : "PAS",
-    "SPEC_AREA" : "Spec_Area",
-    "CSLT_LU" : "CSLT_LU",
-    "TRPA_LU" : "TRPA_LU",
-    "ZONING_Dis" : "Zoning_Dis",
-    "ZONING_Nam" : "Zoning_Name"
-}
+#
+#fieldMap dictionary has structure (field value : field in parcel layer)
+#if anything changes with the parcel layer or flood zone source, this dictionary
+#must be updated
+#
 
-rowsupdated = 0
+fieldMap = {"0.2 PCT ANNUAL CHANCE FLOOD HAZARD" : "X", "AE" : "AE_1" , "D" : "D_NoHaz", "X" : "X_Min"}
+rowsUpdated = 0
 totaldiff = 0
+#start of flood zone updating
 
-arcpy.MakeFeatureLayer_management(planAreaFC, "planArea_lyr")
-arcpy.MakeFeatureLayer_management(parcels, "parcels_lyr")
+for key in fieldMap:
+    sql = "\"%s\" = \'%s\'" % ("FLD_ZONE", key)
+    print sql
+    arcpy.MakeFeatureLayer_management(floodZoneFC, "floodZone_lyr", sql)
+    arcpy.MakeFeatureLayer_management(parcels, "parcels_lyr")
+    arcpy.SelectLayerByLocation_management("parcels_lyr", "INTERSECT", "floodZone_lyr")
+    parcelCount = arcpy.GetCount_management("parcels_lyr")
+    print "number of parcels selected for %s key is %s" % (key, parcelCount)
+    with arcpy.da.UpdateCursor("parcels_lyr", fieldMap[key]) as cursor:
+        count = 0
+        diffcount = 0
+        for row in cursor:
+            count+= 1
+            if row[0] == "Yes":
+                diffcount +=1
+            #print row[0]
+            #row[0] = "Yes"
+            #cursor.updateRow(row)
+        print "count for %s is %s" % (fieldMap[key], str(count))
+        print "count for different values for %s is %s" % (fieldMap[key], str(diffcount)
+        rowsUpdated += count
+        totaldiff += diffcount
 
-planFields = list(planDict.keys())
-parcelFields = list(planDict.values())
-print planFields
+#arcpy.CopyFeatures_management("parcels_lyr", r'J:\GIS files\CSLT.gdb\parcelTEST\Parcels_Aug2015_FIRMtest')
 
-with arcpy.da.SearchCursor("planArea_lyr", planFields) as cursor:
-    c = 0
-    field_counted = 0
-    parcel_counted = 0
-    #fieldcount = len(planFields)
-    for row in cursor:
-        print "_" * 10
-        c += 1
-        arcpy.MakeFeatureLayer_management("planArea_lyr", "planAreaCursor_lyr")
-        arcpy.SelectLayerByLocation_management("parcels_lyr", "HAVE_THEIR_CENTER_IN", "planAreaCursor_lyr")
-        parcelCount = arcpy.GetCount_management("parcels_lyr")
-        print "plan area row %s has %s parcels" % (c, parcelCount)
-        parcel_counted += int(parcelCount.getOutput(0))
-        for i in range(len(planFields)):
-            field_counted += 1
-            print "%s : %s  has value %s" % (planFields[i], parcelFields[i], row[i])
-    totalrows = c
-del cursor, row
 toc = time.clock()
-elapsed = toc - tic
 
-print "\r---------\r%d rows %d fields for %d parcels in %d seconds\rDONE" % (totalrows, field_counted, parcel_counted, elapsed)
+#start of floodway updating
+#parcel field is "AE_Flood". S_FLD_HAZ_AR uses field FLOODWAY
+
+sql = "\"%s\" = \'%s\'" % ("FLOODWAY", "FLOODWAY")
+arcpy.MakeFeatureLayer_management(floodZoneFC, "floodZone_lyr", sql)
+arcpy.MakeFeatureLayer_management(parcels, "parcels_lyr")
+arcpy.SelectLayerByLocation_management("parcels_lyr", "INTERSECT", "floodZone_lyr")
+parcelCount = arcpy.GetCount_management("parcels_lyr")
+
+floodUpdated = 0
+with arcpy.da.UpdateCursor("parcels_lyr", "AE_Flood") as cursor:
+    floodcount = 0
+    for row in cursor:
+        floodcount += 1
+        #row[0] = "Yes"
+        #cursor.updateRow(row)
+    floodUpdated += floodcount
+    
+elapsed = toc - tic
+del cursor, row
+
+print "*" * 20
+print "%d rows updated for being in flood zone" % floodUpdated
+print "script updated %d rows in %d seconds" % (rowsUpdated, elapsed)
+print "*" * 20
+print "a total of %d values were different" % totaldiff

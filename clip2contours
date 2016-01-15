@@ -6,12 +6,21 @@ import arcpy, time, os
 from arcpy.sa import *
 
 tic = time.clock()
-localtime = time.asctime( time.localtime(time.time()) )
-print "\rGO!\rScript started at Local current time :", localtime
+
+def timestamp():
+    timenow = time.asctime( time.localtime(time.time()) )
+    return timenow
+
+print "\rGO!\rScript started at Local current time :", timestamp()
+
+arcpy.env.scratchWorkspace = arcpy.env.scratchGDB
+tempPath = arcpy.env.scratchFolder
+
 
 #inputs and parameters
 inBoundary = r'J:\GIS files\CSLT.gdb\ProjectAreas\knightsInn'
-inDEM = r'J:\GIS files\GIS_DATA\DEM\output_be.tif'
+#inDEM = r'J:\GIS files\GIS_DATA\DEM\output_be.tif'
+inDEM = r'C:\GIS\DEM\output_be.tif'
 ##outContour = r'J:\GIS files\GIS_DATA\DEM\contour_1ft_CSLT.shp'     #name created in script
 contourinterval = 1             #integer, is 1ft
 zFactor = 3.2808                #integer. if dem is in m and you want ft, keep this
@@ -59,13 +68,14 @@ print "unique_name is %s" % unique_name
 
 arcpy.Clip_management(inDEM,\
                       frame,\
-                      unique_name,\
+                      os.path.join(tempPath, "{d[1]}".format(d=os.path.split(unique_name))),\
                       os.path.join("in_memory", outBuffname),\
                       "-3.402823e+038",\
                       "ClippingGeometry",\
                       "NO_MAINTAIN_EXTENT")
-print "clipped DEM created"
-print time.asctime( time.localtime(time.time()) )
+
+clipDEM = os.path.join(tempPath, "{d[1]}".format(d=os.path.split(unique_name)))
+print "clipped DEM created in {} at {}".format(clipDEM, timestamp())
 
 #start of contour. this can take 5-15 minutes depending on file size
 try:
@@ -91,16 +101,20 @@ try:
     #name of contour is based on clipped DEM
     uniqueCont_name = arcpy.CreateUniqueName("{}_{}ft.shp".format(unique_nameFILE.strip(".tif"),contourinterval))
     print "uniqeCont_name is %s" % uniqueCont_name
-    print time.asctime( time.localtime(time.time()) )
 
-    #create in memory raster for faster processing
-    tempRas = arcpy.Raster(unique_name)
     #run contour tool. arcpy.sa is not needed because it was done earlier
-    arcpy.sa.Contour(unique_name, uniqueCont_name, contourinterval, "", zFactor)
+    tempContour = os.path.join(tempPath,"{d[1]}".format(d=os.path.split(uniqueCont_name)))
 
-    del tempRas
-    print "Contours created!!! at {}".format(time.asctime( time.localtime(time.time()) ))
-    #print time.asctime( time.localtime(time.time()) )
+    arcpy.sa.Contour(clipDEM, tempContour, contourinterval, "", zFactor)
+
+    print "Contours created!!! at {}".format(timestamp())
+    arcpy.FeatureClassToFeatureClass_conversion(tempContour, outContDir, "{d[1]}".format(d=os.path.split(uniqueCont_name)))
+    arcpy.CopyRaster_management(clipDEM, unique_name)
+    print "Contours and DEM copied to out folder {} at {}".format(outDir, timestamp())
+    arcpy.Delete_management(clipDEM)
+    arcpy.Delete_management(tempContour)
+    print "temp files from at {} deleted at {}".format(uniqueCont_name, timestamp())
+
 except:
     print "something went wrong"
     print (arcpy.GetMessages())
@@ -112,6 +126,7 @@ print "--------------\rspatial analyst checked back in\r-------------"
 #clear in_memory
 arcpy.Delete_management("in_memory\\" + outBuffname)
 arcpy.Delete_management("in_memory\\" + unique_name)
+
 print "in_memory buffer deleted"
 
 toc = time.clock()

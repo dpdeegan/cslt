@@ -1,0 +1,54 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Feb 17 13:35:49 2016
+
+@author: ddeegan
+"""
+
+import arcpy
+import matplotlib.pylab as plt
+
+arcpy.env.overwriteOutput = True
+
+fc = r'C:\GIS\localData.gdb\Contour_City_1ft_1'
+desc = arcpy.Describe(fc)
+path = desc.path
+arcpy.env.workspace = path
+
+field = "Shape_length"
+
+l = 0
+red = 0
+dict = {}
+
+while red < .9:
+    dict[l] = red    
+    l += 1
+    arcpy.MakeFeatureLayer_management(fc, "fcLyr")
+    beforeCount = int(arcpy.GetCount_management("fcLyr").getOutput(0))
+    arcpy.SelectLayerByAttribute_management("fcLyr", where_clause = "{} > {}".format(field, l))
+    afterCount = int(arcpy.GetCount_management("fcLyr").getOutput(0))
+    red =(beforeCount - afterCount) / float(beforeCount)
+    print "length = {0} reduces rows by {1:.2f}%".format(l,red*100)
+    
+#print dict
+
+list = [dict[key] for key in dict]
+
+#create plot
+plt.ion()
+plt.axis((0.0, 12.0, 0.0, 1.0))
+plt.plot(list)
+plt.grid()
+plt.show()
+plt.xlabel('length of segment (m)')
+plt.ylabel('reduction ratio')
+plt.title("reducing contours  by 90%")
+
+plt.savefig("outputFigure1")
+print "final value of l is {0}\nfinal reduction of {1:.2f} %".format(l,red*100)
+#print "before = {}\nafter = {}".format(beforeCount, afterCount)
+#arcpy.CopyFeatures_management("fcLyr", "Contour_City_1ft_trim")
+#red =(beforeCount - afterCount) / float(beforeCount)
+
+#arcpy.FeatureClassToFeatureClass_conversion("fileLyr", outdir, fcname + ".shp")

@@ -1,0 +1,65 @@
+"""
+Created on Tue Feb 16 14:32:47 2016
+
+@author: ddeegan
+"""
+import arcpy, os
+
+#change these
+#extent is polygon used to "clip" features
+#default expot format is .shp
+#to export to gdb: 
+
+files = r'J:\GIS files\CSLT.gdb\StormWater'
+extent = r'J:\GIS files\CSLT.gdb\Analysis\skiRuntoStateline_clip'
+output = r'J:\GIS files\ExportsShare'
+folder = "testExport"
+
+dir = os.path.join(output, folder)
+
+arcpy.env.overwriteOutput = True
+outdir = os.path.join(output, folder)
+
+if not os.path.exists(outdir):
+    os.mkdir(outdir)
+    print "new directory {} created".format(outdir)
+
+arcpy.env.workspace = files
+filesList = arcpy.ListFeatureClasses()
+
+for file in filesList:    
+    fcname = arcpy.Describe(file).name
+    arcpy.MakeFeatureLayer_management(file, "fileLyr" )
+    arcpy.MakeFeatureLayer_management(extent, "extentLyr" )
+    arcpy.SelectLayerByLocation_management("fileLyr", 'WITHIN', "extentLyr" )
+    #this will give you a shapefile.
+    arcpy.FeatureClassToFeatureClass_conversion("fileLyr", outdir, fcname + ".shp")
+    print "{} feature class selected and copied to {}".format(fcname, outdir)
+    
+#begin checking routine
+#original FC list is comapred to list of FCs as output
+#if the simple len() is the same, it is probably all good
+#if not, print list of different ones
+    
+print "begin test routine"
+try:
+    arcpy.env.workspace = outdir
+    listTest = arcpy.ListFeatureClasses()
+    
+    #the list has to be made list this because "Basins.shp".strip(".shp") returns Basin instead of Basins
+    
+    checklist = [i.split(".shp")[0] for i in listTest]
+    
+    difflist = [item for item in checklist if item not in filesList]
+    
+    if len(filesList) == len(listTest):
+        print "same number of files /({}/) exist in input and output folders".format(len(listTest))
+    else:
+        print "for some reason not all feature classes were exported... "
+        print "here is a list of feature classes that didn't make it:"
+        print difflist
+    print "testing completed"
+except:
+    print "something went wrong in testing"
+    
+print "END"
